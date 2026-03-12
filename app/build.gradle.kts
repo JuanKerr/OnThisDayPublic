@@ -1,4 +1,5 @@
 plugins {
+    // Versionless here because versions are defined in settings.gradle.kts pluginManagement
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
@@ -33,9 +34,11 @@ android {
         isCoreLibraryDesugaringEnabled = true
     }
     kotlinOptions { jvmTarget = "17" }
+
     buildFeatures { compose = true }
     composeOptions { kotlinCompilerExtensionVersion = "1.5.9" }
-    packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
+
+    packaging { resources.excludes.add("/META-INF/{AL2.0,LGPL2.1}") }
 }
 
 dependencies {

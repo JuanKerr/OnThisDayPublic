@@ -43,6 +43,29 @@ android {
 
 dependencies {
 
+    // Keep the BOM so all Compose artifacts resolve to compatible versions
+    implementation(platform("androidx.compose:compose-bom:2024.10.01"))
+
+    // UI + Foundation (stickyHeader is here)
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.foundation:foundation")   // <-- REQUIRED
+
+    // Use the BOM-managed Material3 (no explicit version, avoids mismatches)
+    implementation("androidx.compose.material3:material3")
+
+    // (rest unchanged)
+    implementation("androidx.core:core-ktx:1.12.0")
+    implementation("androidx.activity:activity-compose:1.8.2")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
+    implementation("io.coil-kt:coil-compose:2.6.0")
+    implementation("androidx.navigation:navigation-compose:2.7.6")
+    implementation("androidx.datastore:datastore-preferences:1.0.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+
+    debugImplementation("androidx.compose.ui:ui-tooling")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
+
     implementation(platform("androidx.compose:compose-bom:2024.10.01"))
 
     // Compose UI

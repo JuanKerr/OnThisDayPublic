@@ -148,3 +148,331 @@ fun App() {
                         Text(if (sortAscending) "Oldest → Newest" else "Newest → Oldest")
                     }
                     Box {
+                        androidx.compose.material3.IconButton(onClick = { menuExpanded = true }) {
+                            androidx.compose.material3.Icon(Icons.Default.MoreVert, contentDescription = "Menu")
+                        }
+                        DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Select folders…") },
+                                onClick = { menuExpanded = false; showFolderDialog = true }
+                            )
+                        }
+                    }
+                }
+            )
+        }
+    ) { padding ->
+        Column(Modifier.padding(padding)) {
+            DatePickerRow(selectedDate) { selectedDate = it }
+
+            if (!hasPermission) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("Permission required to read photos")
+                }
+                return@Column
+            }
+
+            if (isLoading) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+
+            if (photosByYear.isEmpty() && !isLoading) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("No photos for this date with current folder filters")
+                }
+            } else {
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    photosByYear.forEach { (year, list) ->
+                        // Header row (non-sticky)
+                        item {
+                            Surface(color = MaterialTheme.colorScheme.surface) {
+                                Text(
+                                    text = year.toString(),
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(MaterialTheme.colorScheme.surface)
+                                        .padding(12.dp)
+                                )
+                            }
+                        }
+                        items(list) { item ->
+                            PhotoRow(item)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun PhotoRow(item: PhotoItem) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        AsyncImage(
+            model = item.contentUri,
+            contentDescription = null,
+            modifier = Modifier.size(72.dp)
+        )
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = item.takenDate.format(DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm")),
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Text(
+                text = item.displayName ?: "",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.Gray
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DatePickerRow(selected: LocalDate, onPicked: (LocalDate) -> Unit) {
+    var showPicker by remember { mutableStateOf(false) }
+
+    if (showPicker) {
+        val state = androidx.compose.material3.rememberDatePickerState(
+            initialSelectedDateMillis = selected.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        )
+        DatePickerDialog(
+            onDismissRequest = { showPicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    val millis = state.selectedDateMillis
+                    if (millis != null) {
+                        val date = Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalDate()
+                        onPicked(LocalDate.of(LocalDate.now().year, date.month, date.dayOfMonth))
+                    }
+                    showPicker = false
+                }) { Text("OK") }
+            },
+            dismissButton = { TextButton(onClick = { showPicker = false }) { Text("Cancel") } }
+        ) {
+            DatePicker(state = state, showModeToggle = false)
+        }
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { showPicker = true }
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text("Date: ", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+        Text(selected.format(DateTimeFormatter.ofPattern("d MMM")), style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.weight(1f))
+        Text("Change", color = MaterialTheme.colorScheme.primary)
+    }
+}
+
+// ---------- Folder Picker UI ----------
+
+@Composable
+fun FolderPickerDialog(
+    allFolders: List<String>,
+    initiallyChecked: Set<String>,
+    onDismiss: () -> Unit,
+    onApply: (Set<String>) -> Unit
+) {
+    val tree = remember(allFolders) { buildFolderTree(allFolders) }
+    var checked by remember(initiallyChecked) { mutableStateOf(initiallyChecked.toMutableSet()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Select folders") },
+        text = {
+            Column(modifier = Modifier.heightIn(max = 420.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = { checked.clear() }) { Text("Deselect all") }
+                    TextButton(onClick = {
+                        checked.clear()
+                        allFolders.forEach { checked.add(it) }
+                    }) { Text("Select all") }
+                }
+                Spacer(Modifier.height(8.dp))
+                LazyColumn {
+                    items(tree) { node ->
+                        FolderNodeRow(node = node, checked = checked, level = 0)
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onApply(checked.toSet()) }) { Text("Apply") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+@Composable
+fun FolderNodeRow(node: FolderNode, checked: MutableSet<String>, level: Int) {
+    val isChecked = checked.contains(node.fullPath)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(start = (level * 16).dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        androidx.compose.material3.Checkbox(
+            checked = isChecked,
+            onCheckedChange = { new ->
+                if (new) checked.add(node.fullPath) else checked.remove(node.fullPath)
+            }
+        )
+        Text(node.name)
+    }
+    node.children.forEach { child ->
+        FolderNodeRow(node = child, checked = checked, level = level + 1)
+    }
+}
+
+data class FolderNode(val name: String, val fullPath: String, val children: List<FolderNode>)
+
+fun buildFolderTree(paths: List<String>): List<FolderNode> {
+    data class TempNode(val name: String) { val children = mutableMapOf<String, TempNode>() }
+    val root = mutableMapOf<String, TempNode>()
+
+    for (p in paths) {
+        val parts = p.trim('/').split('/')
+        var map = root
+        for (part in parts) {
+            val node = map.getOrPut(part) { TempNode(part) }
+            map = node.children
+        }
+    }
+
+    fun toFolderNodes(map: Map<String, TempNode>, prefix: String = ""): List<FolderNode> =
+        map.toSortedMap().map { (name, temp) ->
+            val full = (if (prefix.isEmpty()) name else "$prefix/$name") + "/"
+            FolderNode(name, full, toFolderNodes(temp.children, full))
+        }
+
+    return toFolderNodes(root)
+}
+
+// ---------- Media Query & Models ----------
+
+data class PhotoItem(
+    val id: Long,
+    val contentUri: Uri,
+    val takenDate: LocalDateTimeCompat,
+    val displayName: String?,
+    val relativePath: String?
+)
+
+data class LocalDateTimeCompat(val year: Int, val month: Int, val day: Int, val hour: Int, val minute: Int) {
+    fun format(pattern: DateTimeFormatter): String {
+        val dt = java.time.LocalDateTime.of(year, month, day, hour, minute)
+        return pattern.format(dt)
+        }
+}
+
+fun queryPhotosOnMonthDay(
+    context: android.content.Context,
+    month: Int,
+    day: Int,
+    allowedFolderPrefixes: Set<String>
+): List<PhotoItem> {
+    val resolver = context.contentResolver
+
+    val projection = arrayOf(
+        MediaStore.Images.Media._ID,
+        MediaStore.Images.Media.DATE_TAKEN,
+        MediaStore.Images.Media.DATE_ADDED,
+        MediaStore.Images.Media.DISPLAY_NAME,
+        MediaStore.Images.Media.RELATIVE_PATH,
+        MediaStore.Images.Media.DATA // fallback for older APIs
+    )
+
+    val sortOrder = MediaStore.Images.Media.DATE_TAKEN + " DESC"
+    val uri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+
+    val result = mutableListOf<PhotoItem>()
+
+    resolver.query(uri, projection, null, null, sortOrder)?.use { cursor ->
+        val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+        val takenCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_TAKEN)
+        val addedCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
+        val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
+        val relCol = cursor.getColumnIndex(MediaStore.Images.Media.RELATIVE_PATH)
+        val dataCol = cursor.getColumnIndex(MediaStore.Images.Media.DATA)
+
+        while (cursor.moveToNext()) {
+            val id = cursor.getLong(idCol)
+            val name = cursor.getString(nameCol)
+
+            var timeMillis = cursor.getLong(takenCol)
+            if (timeMillis == 0L) timeMillis = cursor.getLong(addedCol) * 1000L
+
+            val dt = Instant.ofEpochMilli(timeMillis).atZone(ZoneId.systemDefault()).toLocalDateTime()
+            if (dt.monthValue != month || dt.dayOfMonth != day) continue
+
+            // Resolve relative path
+            val rel = if (relCol != -1) cursor.getString(relCol) else null
+            val relPath = rel ?: run {
+                if (dataCol != -1) {
+                    val fullPath = cursor.getString(dataCol) ?: return@run null
+                    val markers = listOf("/DCIM/", "/Pictures/", "/Download/", "/Screenshots/", "/Movies/", "/Camera/")
+                    val m = markers.firstOrNull { fullPath.contains(it) }
+                    if (m != null) fullPath.substring(fullPath.indexOf(m) + 1, fullPath.lastIndexOf('/') + 1) else null
+                } else null
+            }
+
+            // Apply folder filters if any
+            if (allowedFolderPrefixes.isNotEmpty()) {
+                val matches = relPath != null && allowedFolderPrefixes.any { prefix -> relPath.startsWith(prefix) }
+                if (!matches) continue
+            }
+
+            val contentUri = ContentUris.withAppendedId(uri, id)
+            result.add(
+                PhotoItem(
+                    id = id,
+                    contentUri = contentUri,
+                    takenDate = LocalDateTimeCompat(dt.year, dt.monthValue, dt.dayOfMonth, dt.hour, dt.minute),
+                    displayName = name,
+                    relativePath = relPath
+                )
+            )
+        }
+    }
+    return result
+}
+
+suspend fun loadAvailableFolders(context: android.content.Context): List<String> = withContext(Dispatchers.IO) {
+    val resolver = context.contentResolver
+    val projection = arrayOf(
+        MediaStore.Images.Media.RELATIVE_PATH,
+        MediaStore.Images.Media.DATA
+    )
+    val uri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+    val set = linkedSetOf<String>()
+    resolver.query(uri, projection, null, null, null)?.use { cursor ->
+        val relCol = cursor.getColumnIndex(MediaStore.Images.Media.RELATIVE_PATH)
+        val dataCol = cursor.getColumnIndex(MediaStore.Images.Media.DATA)
+        while (cursor.moveToNext()) {
+            val rel = if (relCol != -1) cursor.getString(relCol) else null
+            val path = rel ?: run {
+                if (dataCol != -1) {
+                    val full = cursor.getString(dataCol)
+                    if (full != null) {
+                        val markers = listOf("/DCIM/", "/Pictures/", "/Download/", "/Screenshots/", "/Movies/", "/Camera/")
+                        val m = markers.firstOrNull { full.contains(it) }
+                        if (m != null) full.substring(full.indexOf(m) + 1, full.lastIndexOf('/') + 1) else null
+                    } else null
+                } else null
+            }
+            if (path != null && path.isNotEmpty()) set.add(path)
+            if (set.size > 500) break // safety cap
+        }
+    }
+    set.sorted()
+}

@@ -13,7 +13,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Optional: verify Java is present on the runner (ubuntu-latest has Java 17 preinstalled)
+      # Optional: confirm Java is present (ubuntu-latest includes JDK 17)
       - name: Check Java
         shell: bash
         run: |
@@ -21,7 +21,6 @@ jobs:
           javac -version
 
       # Install Android SDK cmdline-tools and required packages
-      # NOTE: We export PATH within the same shell before running sdkmanager
       - name: Install Android SDK
         shell: bash
         env:
@@ -49,8 +48,10 @@ jobs:
           export ANDROID_SDK_ROOT="$ANDROID_SDK_ROOT"
           export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH"
 
-          # Accept licenses and install required packages
-          yes | sdkmanager --licenses
+          # Accept licenses (allow 'yes' to SIGPIPE without failing the step)
+          yes | sdkmanager --licenses || true
+
+          # Install required packages
           sdkmanager --install "platforms;android-34" "build-tools;34.0.0" "platform-tools"
 
           # Persist PATH for subsequent steps in this job

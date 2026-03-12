@@ -1,4 +1,5 @@
 plugins {
-    id("com.android.application") version "8.5.2"
-    id("org.jetbrains.kotlin.android") version "1.9.22"
+    // DO NOT apply Android here; keep apply=false at the root
+    id("com.android.application") apply false
+    id("org.jetbrains.kotlin.android") apply false
 }

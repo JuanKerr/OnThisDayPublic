@@ -2,12 +2,14 @@ package com.example.onthisdayphotos
 
 import android.Manifest
 import android.content.ContentUris
+import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -17,19 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,6 +27,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import coil.compose.AsyncImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -47,12 +38,12 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-// DataStore
+// --- DataStore (bind to Context, not Activity) ---
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 
-private val ComponentActivity.dataStore by preferencesDataStore(name = "settings")
+private val Context.dataStore by preferencesDataStore(name = "settings")
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -64,23 +55,29 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun App() {
-    val activity = LocalContext.current as ComponentActivity
-    val context = activity
+    val context = LocalContext.current
 
-    // --- Runtime permission for images ---
+    // --- Runtime permission for images (Compose-friendly launcher) ---
     var hasPermission by remember { mutableStateOf(false) }
     val permission =
         if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_IMAGES
         else Manifest.permission.READ_EXTERNAL_STORAGE
 
-    val launcher = remember {
-        activity.registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+    val permissionLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             hasPermission = granted
         }
-    }
+
     LaunchedEffect(Unit) {
-        hasPermission = context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
-        if (!hasPermission) launcher.launch(permission)
+        // On API < 23, runtime permissions are not required
+        val initiallyGranted =
+            if (Build.VERSION.SDK_INT >= 23)
+                ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+            else true
+        hasPermission = initiallyGranted
+        if (!initiallyGranted) {
+            permissionLauncher.launch(permission)
+        }
     }
 
     // --- Preferences / filters ---
@@ -93,7 +90,7 @@ fun App() {
     // Load persisted folder selections
     var allowedFolders by remember { mutableStateOf<Set<String>>(emptySet()) }
     LaunchedEffect(Unit) {
-        val prefs = activity.dataStore.data.first()
+        val prefs = context.dataStore.data.first()
         allowedFolders = prefs[FOLDER_FILTER_KEY] ?: emptySet()
     }
 
@@ -119,6 +116,7 @@ fun App() {
         photosByYear = if (sortAscending) grouped.toSortedMap() else grouped.toSortedMap(compareByDescending { it })
         isLoading = false
     }
+
     LaunchedEffect(selectedDate, sortAscending, allowedFolders, hasPermission) { refresh() }
 
     var menuExpanded by remember { mutableStateOf(false) }
@@ -131,7 +129,7 @@ fun App() {
             onDismiss = { showFolderDialog = false },
             onApply = { newSet ->
                 scope.launch {
-                    activity.dataStore.edit { it[FOLDER_FILTER_KEY] = newSet }
+                    context.dataStore.edit { it[FOLDER_FILTER_KEY] = newSet }
                     allowedFolders = newSet
                     showFolderDialog = false
                 }
@@ -148,8 +146,8 @@ fun App() {
                         Text(if (sortAscending) "Oldest → Newest" else "Newest → Oldest")
                     }
                     Box {
-                        androidx.compose.material3.IconButton(onClick = { menuExpanded = true }) {
-                            androidx.compose.material3.Icon(Icons.Default.MoreVert, contentDescription = "Menu")
+                        IconButton(onClick = { menuExpanded = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "Menu")
                         }
                         DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
                             DropdownMenuItem(
@@ -183,7 +181,7 @@ fun App() {
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     photosByYear.forEach { (year, list) ->
-                        // Header row (non-sticky)
+                        // Year header (non-sticky)
                         item {
                             Surface(color = MaterialTheme.colorScheme.surface) {
                                 Text(
@@ -240,7 +238,7 @@ fun DatePickerRow(selected: LocalDate, onPicked: (LocalDate) -> Unit) {
     var showPicker by remember { mutableStateOf(false) }
 
     if (showPicker) {
-        val state = androidx.compose.material3.rememberDatePickerState(
+        val state = rememberDatePickerState(
             initialSelectedDateMillis = selected.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
         )
         DatePickerDialog(
@@ -321,7 +319,7 @@ fun FolderNodeRow(node: FolderNode, checked: MutableSet<String>, level: Int) {
             .padding(start = (level * 16).dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        androidx.compose.material3.Checkbox(
+        Checkbox(
             checked = isChecked,
             onCheckedChange = { new ->
                 if (new) checked.add(node.fullPath) else checked.remove(node.fullPath)
@@ -372,11 +370,11 @@ data class LocalDateTimeCompat(val year: Int, val month: Int, val day: Int, val 
     fun format(pattern: DateTimeFormatter): String {
         val dt = java.time.LocalDateTime.of(year, month, day, hour, minute)
         return pattern.format(dt)
-        }
+    }
 }
 
 fun queryPhotosOnMonthDay(
-    context: android.content.Context,
+    context: Context,
     month: Int,
     day: Int,
     allowedFolderPrefixes: Set<String>
@@ -447,7 +445,7 @@ fun queryPhotosOnMonthDay(
     return result
 }
 
-suspend fun loadAvailableFolders(context: android.content.Context): List<String> = withContext(Dispatchers.IO) {
+suspend fun loadAvailableFolders(context: Context): List<String> = withContext(Dispatchers.IO) {
     val resolver = context.contentResolver
     val projection = arrayOf(
         MediaStore.Images.Media.RELATIVE_PATH,
@@ -476,3 +474,4 @@ suspend fun loadAvailableFolders(context: android.content.Context): List<String>
     }
     set.sorted()
 }
+``

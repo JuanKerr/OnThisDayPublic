@@ -42,6 +42,19 @@ android {
 }
 
 dependencies {
+
+    implementation(platform("androidx.compose:compose-bom:2024.10.01"))
+
+    // Compose UI
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+
+    // ✅ Add this:
+    implementation("androidx.compose.foundation:foundation")
+
+    // Material 3
+    implementation("androidx.compose.material3:material3:1.2.1")
+
     implementation(platform("androidx.compose:compose-bom:2024.10.01"))
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.activity:activity-compose:1.8.2")

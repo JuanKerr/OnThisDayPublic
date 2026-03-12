@@ -1,6 +1,10 @@
+@file:OptIn(ExperimentalFoundationApi::class)
 
 package com.example.onthisdayphotos
 
+
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.lazy.stickyHeader
 import android.Manifest
 import android.content.ContentUris
 import android.content.pm.PackageManager

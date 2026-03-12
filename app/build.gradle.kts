@@ -1,5 +1,5 @@
 plugins {
-    // Versionless here because versions are defined in settings.gradle.kts pluginManagement
+    // Versionless here because versions are in settings.gradle.kts
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }

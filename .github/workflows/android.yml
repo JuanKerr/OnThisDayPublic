@@ -13,32 +13,48 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Optional: confirm Java is already installed on the runner
+      # Optional: confirm Java presence (ubuntu-latest already has Java 17)
       - name: Check Java
+        shell: bash
         run: |
           java -version
           javac -version
 
-      # Install Android SDK cmdline tools & required packages directly (no external actions)
+      # Install Android SDK cmdline tools and required packages
       - name: Install Android SDK
+        shell: bash
         env:
           ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
         run: |
-          set -e
+          set -euxo pipefail
+
+          # Create SDK root
+          mkdir -p "$ANDROID_SDK_ROOT"
+
+          # Download & unpack cmdline-tools
           mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
           cd "$ANDROID_SDK_ROOT/cmdline-tools"
           curl -L -o commandlinetools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
           unzip -q commandlinetools.zip
           rm commandlinetools.zip
+
+          # Move to 'latest' layout expected by sdkmanager
           mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools/latest"
           mv "$ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools" "$ANDROID_SDK_ROOT/cmdline-tools/latest"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
-          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
-          echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
+
+          # Export PATH for THIS step so we can run sdkmanager immediately
+          export ANDROID_SDK_ROOT="$ANDROID_SDK_ROOT"
+          export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH"
+
+          # Accept licenses and install required packages
           yes | sdkmanager --licenses
           sdkmanager --install "platforms;android-34" "build-tools;34.0.0" "platform-tools"
 
-      # Provision Gradle and build WITHOUT the wrapper; target the app module explicitly
+          # Persist PATH for subsequent steps in the job
+          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
+
+      # Provision Gradle and build WITHOUT the wrapper; target the app module
       - name: Build Debug APK (no wrapper)
         uses: gradle/gradle-build-action@v3
         with:

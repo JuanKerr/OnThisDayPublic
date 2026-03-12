@@ -1,3 +1,0 @@
-<resources>
-    <string name="app_name">On This Day</string>
-</resources>
